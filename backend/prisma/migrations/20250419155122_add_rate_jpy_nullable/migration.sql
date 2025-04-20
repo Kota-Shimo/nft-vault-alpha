@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Tx" ADD COLUMN     "rateJpy" DOUBLE PRECISION;

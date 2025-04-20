@@ -1,0 +1,72 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type User {
+  id: String!
+  walletAddresses: [String!]
+  role: String
+}
+
+type NftItem {
+  id: String!
+  title: String
+  chainType: String!
+  metadataHash: String!
+  owner: User
+  isForSale: Boolean!
+  price: Float
+}
+
+type Journal {
+  id: ID!
+  accountDr: String!
+  accountCr: String!
+  amountJpy: Float!
+  freeeDealId: Int
+}
+
+type Proof {
+  id: ID!
+  txId: String!
+  celestiaHash: String!
+  pdfUrl: String!
+}
+
+type Query {
+  totalBalanceJpy: Float!
+  myNfts(chainType: String): [NftItem!]!
+  marketNfts(chainType: String): [NftItem!]!
+  evmNfts(owner: String!): [NftItem!]!
+  journal(tenantId: String!): [Journal!]!
+  journalCsv(tenantId: String!): String!
+  proofs(tenantId: String!): [Proof!]!
+  latestTxId(tenantId: String!): String
+}
+
+type Mutation {
+  sendJournalToFreee(tenantId: String!): Boolean!
+  register(email: String!, password: String!): String!
+  login(email: String!, password: String!): String!
+  mintNft(input: MintNftInput!): NftItem!
+  listForSale(input: ListForSaleInput!): NftItem!
+  buyNft(input: BuyNftInput!): NftItem!
+  mintNftOnEvm(to: String!, tokenUri: String!): String!
+  generateJournal(tenantId: String!): Boolean!
+  generateProof(txId: String!): Boolean!
+}
+
+input MintNftInput {
+  title: String!
+  description: String!
+  imageBase64: String!
+}
+
+input ListForSaleInput {
+  nftId: String!
+  price: Int!
+}
+
+input BuyNftInput {
+  nftId: String!
+}

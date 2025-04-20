@@ -1,0 +1,207 @@
+//==============================================
+// 0. 基本設定（変更しない）
+//==============================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+//==============================================
+// 1. テナント
+//==============================================
+
+model Tenant {
+  id       String  @id @default(cuid())
+  name     String
+  plan     String  @default("beta")
+  users    User[]
+  wallets  Wallet[]
+  txs      Tx[]
+}
+
+
+//==============================================
+// 2. 既存ドメイン
+//==============================================
+
+model User {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  email           String?  @unique
+  password        String?
+  role            String   @default("user")
+  walletAddresses String[]
+
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  wallets      Wallet[]
+  transactions Transaction[]
+  nftItems     NftItem[]
+  likedNfts    NftLiked[]
+  profile      UserProfile?
+  followers    Follows[] @relation("followers")
+  followings   Follows[] @relation("followings")
+  bids         Bid[]
+  comments     Comment[]
+  txs          Tx[]
+}
+
+model UserProfile {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id])
+  bio     String?
+  website String?
+}
+
+model NftItem {
+  id           String    @id @default(uuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  chainType    String
+  metadataHash String
+  imageUrl     String?
+  title        String?
+  description  String?
+
+  ownerId      String?
+  owner        User?     @relation(fields: [ownerId], references: [id])
+  isForSale    Boolean   @default(false)
+  price        Int?
+  transactions Transaction[]
+
+  isAuction Boolean @default(false)
+  auction   Auction?
+  comments  Comment[]
+  likedBy   NftLiked[]
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  type          String
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  nftItemId     String
+  nftItem       NftItem  @relation(fields: [nftItemId], references: [id])
+  moveTxHash    String?
+  ethAnchorHash String?
+}
+
+model Auction {
+  id         String   @id @default(uuid())
+  nftId      String   @unique
+  nftItem    NftItem  @relation(fields: [nftId], references: [id])
+  startPrice Int
+  endTime    DateTime
+  isActive   Boolean  @default(true)
+  bids       Bid[]
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Int
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  text      String
+  nftId     String
+  nftItem   NftItem  @relation(fields: [nftId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+model NftLiked {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  nftId     String
+  nftItem   NftItem  @relation(fields: [nftId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Follows {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User @relation("followers",  fields: [followerId],  references: [id])
+  following   User @relation("followings", fields: [followingId], references: [id])
+}
+
+
+//==============================================
+// 3. 会計ドメイン
+//==============================================
+
+model Wallet {
+  id        String   @id @default(uuid())
+  address   String   @unique
+  chainId   String
+  createdAt DateTime @default(now())
+
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id])
+
+  txs Tx[]
+}
+
+model Tx {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  hash        String   @unique
+  blockNumber Int
+  amountJpy   Float
+  rateJpy     Float?           // nullable
+  txType      String
+
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  walletId String?
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id])
+
+  journal Journal?
+  proof   Proof?
+}
+
+model Journal {
+  id          String  @id @default(uuid())
+  txId        String  @unique
+  accountDr   String
+  accountCr   String
+  amountJpy   Float
+  freeeDealId Int?         // freee に送信済みなら保存
+  tx          Tx      @relation(fields: [txId], references: [id])
+}
+
+model Proof {
+  id           String @id @default(uuid())
+  txId         String @unique
+  celestiaHash String
+  pdfUrl       String
+  tx           Tx     @relation(fields: [txId], references: [id])
+}

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: nft-vault-alpha-backend
+    env: node
+    plan: free
+    branch: pivot/accounting-saas
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: "postgresql://nftvaultalphadb_user:ZFB1VkUxfn15Id1wVcTMAgdztIYOdAlD@dpg-d011oj95pdvs73964d70-a.singapore-postgres.render.com/nftvaultalphadb"
+      - key: PORT
+        value: "4000"
