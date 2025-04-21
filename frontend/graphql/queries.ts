@@ -1,16 +1,15 @@
-/* frontend/graphql/queries.ts */
 import { gql } from '@apollo/client';
 
 /* ───────── ダッシュボード ───────── */
 export const GET_TOTAL_BALANCE = gql`
-  query GetTotalBalance {
+  query {
     totalBalanceJpy
   }
 `;
 
 /* ───────── NFT 一覧 ───────── */
 export const GET_MY_NFTS = gql`
-  query MyNfts($chainType: String) {
+  query ($chainType: String) {
     myNfts(chainType: $chainType) {
       id
       title
@@ -23,19 +22,53 @@ export const GET_MY_NFTS = gql`
 
 /* ───────── 仕訳一覧 ───────── */
 export const GET_JOURNAL = gql`
-  query GetJournal($tenantId: String!) {
-    journal(tenantId: $tenantId) {
+  query {
+    journal {
       id
       accountDr
       accountCr
-      amountJpy         # freeeDealId など余計な項目は削除
+      amountJpy
+      freeeDealId
     }
   }
 `;
 
 /* ───────── CSV 出力 ───────── */
 export const GET_JOURNAL_CSV = gql`
-  query GetJournalCsv($tenantId: String!) {
-    journalCsv(tenantId: $tenantId)
+  query {
+    journalCsv
+  }
+`;
+
+/* ───────── 仕訳生成 ───────── */
+export const MUTATE_GENERATE = gql`
+  mutation {
+    generateJournal
+  }
+`;
+
+/* ───────── freee 送信 ───────── */
+export const MUTATE_FREEE = gql`
+  mutation {
+    sendJournalToFreee
+  }
+`;
+
+/* ───────── Proof 一覧 ───────── */
+export const GET_PROOFS = gql`
+  query {
+    proofs {
+      id
+      txId
+      pdfUrl
+      celestiaHash
+    }
+  }
+`;
+
+/* ───────── Stripe Checkout ───────── */
+export const CREATE_CHECKOUT = gql`
+  mutation ($plan: String!) {
+    createCheckout(plan: $plan)
   }
 `;

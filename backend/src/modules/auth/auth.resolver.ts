@@ -1,50 +1,53 @@
-import {
-  Resolver,
-  Mutation,
-  Args,
-} from '@nestjs/graphql';               // GraphQL 用デコレーター
+import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
+import { UseGuards, UnauthorizedException } from '@nestjs/common';
 
-import { UnauthorizedException } from '@nestjs/common'; // ← 例外はこちら
 import { AuthService } from './auth.service';
+import { ConnectWalletInput } from './dto/connect-wallet.input';
+import { GqlJwtAuthGuard } from '../../guards/gql-auth.guard';
 
 @Resolver()
 export class AuthResolver {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authSvc: AuthService) {}
 
-  /** ------------------------------------------------------------
-   *  新規登録
-   *  成功したら固定文字列 "Registration successful" を返す
-   * ----------------------------------------------------------- */
+  /* ───── 新規登録 ───── */
   @Mutation(() => String)
   async register(
     @Args('email') email: string,
     @Args('password') password: string,
   ): Promise<string> {
-    await this.authService.register(email, password);
+    await this.authSvc.register(email, password);
     return 'Registration successful';
   }
 
-  /** ------------------------------------------------------------
-   *  ログイン
-   *  成功したら JWT アクセストークン文字列を返す
-   * ----------------------------------------------------------- */
+  /* ───── ログイン ───── */
   @Mutation(() => String)
   async login(
     @Args('email') email: string,
     @Args('password') password: string,
   ): Promise<string> {
-    /* メアド＆パスワード検証 */
-    const user = await this.authService.validateUser(email, password);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    const user = await this.authSvc.validateUser(email, password);
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    /* JWT 発行（email は null の可能性があるため “!” で断言）*/
-    const token = await this.authService.login({
+    /* ★ tenantId を含めて JWT を発行 */
+    const token = await this.authSvc.login({
       id: user.id,
-      email: user.email!,        // ← null を許容した上で non‑null 断言
+      email: user.email!,
+      tenantId: user.tenantId ?? null,
     });
 
     return token.accessToken;
+  }
+
+  /* ───── ウォレット接続 ───── */
+  @UseGuards(GqlJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async connectWallet(
+    @Args('input') input: ConnectWalletInput,
+    @Context() ctx: any,
+  ): Promise<boolean> {
+    const uid: string | undefined = ctx.req.user?.sub;
+    if (!uid) throw new UnauthorizedException();
+    await this.authSvc.connectWallet(uid, input);
+    return true;
   }
 }

@@ -25,7 +25,9 @@
     "@nestjs/schedule": "^2.2.2",
     "@prisma/client": "^4.x",
     "@solana/web3.js": "^1.98.0",
+    "@types/lodash": "^4.17.16",
     "@types/pdfkit": "^0.13.9",
+    "@types/stripe": "^8.0.416",
     "apollo-server-core": "^3.13.0",
     "apollo-server-express": "^3.13.0",
     "aptos": "^1.x",
@@ -38,12 +40,14 @@
     "ethers": "^5.8.0",
     "graphql": "^16.10.0",
     "jsonwebtoken": "^8.5.1",
+    "lodash": "^4.17.21",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pdfkit": "^0.17.0",
     "prisma": "^4.x",
-    "reflect-metadata": "^0.1.13"
+    "reflect-metadata": "^0.1.13",
+    "stripe": "^18.0.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^9.x",

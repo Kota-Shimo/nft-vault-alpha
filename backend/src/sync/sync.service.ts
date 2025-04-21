@@ -1,129 +1,120 @@
 /* backend/src/sync/sync.service.ts
-   ───────────────────────────────
-   - RPC タイムアウトを 90 秒に延長
-   - 取得ブロック幅を 3 へ縮小（＝RPC 1 呼び出しあたりの負荷軽減）
+   差分同期 & getLogs 高速化版
+   - 1 テナントごとに lastSyncedBlock 差分取得
+   - provider.getLogs + 1000‑block チャンク
+   - ETH→JPY レートを日付キャッシュ
+   - console.time で全体所要時間を計測
 */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron }               from '@nestjs/schedule';
-import { PrismaService }      from '../prisma.service';
-import { ethers }             from 'ethers';
-import axios                  from 'axios';
-import { BlockWithTransactions } from '@ethersproject/abstract-provider';
+import { Cron } from '@nestjs/schedule';
+import { PrismaService } from '../prisma.service';
+import { ethers } from 'ethers';
+import axios from 'axios';
+import chunk from 'lodash/chunk';
 
 @Injectable()
 export class SyncService {
-  private readonly logger = new Logger(SyncService.name);
+  private readonly log = new Logger(SyncService.name);
 
-  /** Alchemy RPC（90 s タイムアウト付き） */
-  private readonly provider = new ethers.providers.JsonRpcProvider(
-    {
-      url:     process.env.EVM_RPC_URL!, // 例: https://eth-mainnet.g.alchemy.com/v2/xxx
-      timeout: 90_000,                   // 90 秒
-    },
+  private provider = new ethers.providers.JsonRpcProvider(
+    { url: process.env.EVM_RPC_URL!, timeout: 90_000 },
     { name: 'mainnet', chainId: 1 },
   );
 
-  private isRunning = false;
   private rateCache: Record<string, number> = {};
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {}
 
-  /** 1 分おきにブロック／レート同期 */
+  /** 毎分実行 */
   @Cron('* * * * *')
-  async handleCron(): Promise<void> {
-    if (this.isRunning) {
-      this.logger.warn('⏳ 前回実行中、スキップ');
-      return;
-    }
-    this.isRunning = true;
+  async handleCron() {
+    console.time('sync');
 
-    try {
-      /* 1. 登録ウォレット一覧を取得（アドレス小文字化） */
-      const addrs = new Set(
-        (await this.prisma.wallet.findMany({ select: { address: true } }))
-          .map(w => w.address.toLowerCase()),
-      );
-      if (!addrs.size) {
-        this.logger.warn('⚠ ウォレット未登録のため同期スキップ');
-        return;
-      }
+    /* 1) 全テナントを取得（ウォレット付き） */
+    const tenants = await this.prisma.tenant.findMany({
+      include: { wallets: true },
+    });
+    if (!tenants.length) return;
 
-      /* 2. 同期対象ブロック範囲を決定 */
+    for (const t of tenants) {
+      if (!t.wallets.length) continue;
+
+      /* 2) 差分範囲計算 */
       const latest = await this.provider.getBlockNumber();
-      const last =
-        (
-          await this.prisma.tx.aggregate({
-            _max: { blockNumber: true },
-          })
-        )._max?.blockNumber ?? latest - 25;
+      const from   = t.lastSyncedBlock + 1;
+      if (from > latest) continue;
 
-      if (latest === last) {
-        this.logger.log('💤 新規ブロックなし');
-        return;
-      }
+      const addrSet = new Set(t.wallets.map(w => w.address.toLowerCase()));
 
-      /* 3. 3 ブロックずつ取得して保存 */
-      for (let from = last + 1; from <= latest; from += 3) {
-        const to = Math.min(from + 2, latest);
+      /* 3) 1000‑block ごとに getLogs → INSERT */
+      const ranges = chunk(
+        Array.from({ length: latest - from + 1 }, (_, i) => from + i),
+        1000,
+      ).map((arr: number[]) => [arr[0], arr[arr.length - 1]] as [number, number]);
 
-        const blocks: BlockWithTransactions[] = await Promise.all(
-          [...Array(to - from + 1).keys()].map(i =>
-            this.provider.getBlockWithTransactions(from + i),
-          ),
-        );
+      for (const [rFrom, rTo] of ranges) {
+        const logs = await this.provider.getLogs({
+          fromBlock: rFrom,
+          toBlock:   rTo,
+        });
 
-        for (const b of blocks) {
-          const dateKey = new Date(b.timestamp * 1e3)
-            .toISOString()
-            .slice(0, 10);                     // YYYY-MM-DD
-          const rateJpy = await this.getRate(dateKey);
+        /* ブロック日付キャッシュ */
+        const blockDate = new Map<number, string>();
+        const getDate = async (bn: number) => {
+          if (blockDate.has(bn)) return blockDate.get(bn)!;
+          const b = await this.provider.getBlock(bn);
+          const d = new Date(b.timestamp * 1e3).toISOString().slice(0, 10);
+          blockDate.set(bn, d);
+          return d;
+        };
 
-          for (const tx of b.transactions) {
-            const fromAddr = tx.from.toLowerCase();
-            const toAddr   = (tx.to ?? '').toLowerCase();
-            const isSend   = addrs.has(fromAddr);
-            const isRecv   = addrs.has(toAddr);
-            if (!isSend && !isRecv) continue; // 自社アドレス無関係
+        const rows = [];
+        for (const l of logs) {
+          /* 送受いずれかが自社ウォレットなら対象 */
+          if (!addrSet.has(l.address.toLowerCase())) continue;
 
-            await this.prisma.tx.upsert({
-              where:  { hash: tx.hash },
-              create: {
-                hash:        tx.hash,
-                blockNumber: b.number,
-                rateJpy,
-                amountJpy:
-                  (isRecv ? 1 : -1) *
-                  Number(ethers.utils.formatEther(tx.value)) *
-                  rateJpy,
-                txType: isSend ? 'SEND' : 'RECEIVE',
-              },
-              update: {},                      // 既存は触らない
-            });
-          }
+          const date = await getDate(l.blockNumber);
+          const rate = await this.rate(date);
+          const eth  = Number(ethers.utils.formatEther(l.data || '0x0'));
+
+          rows.push({
+            hash: l.transactionHash,
+            blockNumber: l.blockNumber,
+            rateJpy: rate,
+            amountJpy: eth * rate,
+            txType: 'RECEIVE',
+            tenantId: t.id,
+          });
         }
-        this.logger.log(`sync ${from}-${to}`);
+
+        if (rows.length) {
+          await this.prisma.tx.createMany({ data: rows, skipDuplicates: true });
+        }
+        this.log.log(`tenant=${t.id} ${rFrom}-${rTo} (${rows.length} tx)`);
       }
 
-      this.logger.log(`✅ synced to ${latest}`);
-    } catch (e) {
-      this.logger.error('sync error', e as Error);
-    } finally {
-      this.isRunning = false;
+      /* 4) 差分同期位置を更新 */
+      await this.prisma.tenant.update({
+        where: { id: t.id },
+        data:  { lastSyncedBlock: latest },
+      });
+      this.log.log(`tenant=${t.id} synced → ${latest}`);
     }
+
+    console.timeEnd('sync');
   }
 
-  /** 1 日単位の ETH→JPY レートをキャッシュ取得 */
-  private async getRate(date: string): Promise<number> {
+  /* ETH→JPY レートを日付キャッシュ取得 */
+  private async rate(date: string) {
     if (this.rateCache[date]) return this.rateCache[date];
 
-    const [yyyy, mm, dd] = date.split('-');
+    const [y, m, d] = date.split('-');
     const { data } = await axios.get(
       'https://api.coingecko.com/api/v3/coins/ethereum/history',
-      { params: { date: `${dd}-${mm}-${yyyy}` } },
+      { params: { date: `${d}-${m}-${y}` } },
     );
-    const rate = data.market_data.current_price.jpy as number;
-    this.rateCache[date] = rate;
-    return rate;
+    return (this.rateCache[date] =
+      data.market_data.current_price.jpy as number);
   }
 }

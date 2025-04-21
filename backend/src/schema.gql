@@ -38,22 +38,31 @@ type Query {
   myNfts(chainType: String): [NftItem!]!
   marketNfts(chainType: String): [NftItem!]!
   evmNfts(owner: String!): [NftItem!]!
-  journal(tenantId: String!): [Journal!]!
-  journalCsv(tenantId: String!): String!
-  proofs(tenantId: String!): [Proof!]!
-  latestTxId(tenantId: String!): String
+  journal: [Journal!]!
+  journalCsv: String!
+  proofs: [Proof!]!
+  latestTxId: String
 }
 
 type Mutation {
-  sendJournalToFreee(tenantId: String!): Boolean!
   register(email: String!, password: String!): String!
   login(email: String!, password: String!): String!
+  connectWallet(input: ConnectWalletInput!): Boolean!
   mintNft(input: MintNftInput!): NftItem!
   listForSale(input: ListForSaleInput!): NftItem!
   buyNft(input: BuyNftInput!): NftItem!
   mintNftOnEvm(to: String!, tokenUri: String!): String!
-  generateJournal(tenantId: String!): Boolean!
+  generateJournal: Int!
   generateProof(txId: String!): Boolean!
+  createCheckout(tenantId: String!, plan: Plan!): String!
+  sendJournalToFreee(tenantId: String!): Int!
+  testFreeeSend: Boolean!
+}
+
+input ConnectWalletInput {
+  address: String!
+  signature: String!
+  chainType: String!
 }
 
 input MintNftInput {
@@ -69,4 +78,11 @@ input ListForSaleInput {
 
 input BuyNftInput {
   nftId: String!
+}
+
+"""Subscription plan"""
+enum Plan {
+  STARTER
+  BUSINESS
+  ENTERPRISE
 }

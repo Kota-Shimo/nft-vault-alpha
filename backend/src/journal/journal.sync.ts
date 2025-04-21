@@ -11,44 +11,52 @@ export class JournalSyncJob {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly freee : FreeeService,
+    private readonly freee: FreeeService,
   ) {}
 
-  /** 10 分おきに未送信仕訳を freee へ転送 */
+  /** 10 分おきに未送信仕訳を freee へ転送 */
   @Cron('*/10 * * * *')
   async handle(): Promise<void> {
+    /* freeeDealId が null のものを 50 件だけ取る */
     const unsent = await this.prisma.journal.findMany({
-      where  : { freeeDealId: null },
+      where: { freeeDealId: null },
       include: { tx: true },
-      take   : 50,
+      take: 50,
     });
     if (!unsent.length) return;
 
-    /* 科目 → freee ID 簡易マップ */
+    /* 借方／貸方→freee 勘定科目 ID 簡易マップ */
     const accountIdMap: Record<string, number> = {
-      '売上高'   : 79,
-      '旅費交通費': 34,
+      'Sales': Number(process.env.FREEE_ACCOUNT_ITEM_SALES ?? 12),
+      'Expense': Number(process.env.FREEE_ACCOUNT_ITEM_EXPENSE ?? 79),
     };
-    const TAX_CODE_SALES_10 = 108;
+    const TAX_CODE_SALES_10 = 108; // 外税売上 10%
+
+    let success = 0;
 
     for (const j of unsent) {
       try {
+        const accountCrId = accountIdMap[j.accountCr] ?? 0;
+
         const dealId = await this.freee.postDeal({
-          accountDr   : j.accountDr,
-          accountCrId : accountIdMap[j.accountCr] ?? 0,
-          taxCodeId   : TAX_CODE_SALES_10,
-          amountJpy   : j.amountJpy,
-          txDate      : j.tx.createdAt.toISOString().slice(0, 10),
+          accountCrId,
+          taxCodeId: TAX_CODE_SALES_10,
+          amountJpy: j.amountJpy,
+          txDate: j.tx.createdAt.toISOString().slice(0, 10),
         });
 
-        await this.prisma.journal.update({
-          where: { id: j.id },
-          data : { freeeDealId: dealId },
-        });
+        /* FREEE_ENABLED=false モードでは -1 で返る */
+        if (dealId !== -1) {
+          await this.prisma.journal.update({
+            where: { id: j.id },
+            data: { freeeDealId: dealId },
+          });
+        }
+        success += 1;
       } catch (e) {
         this.logger.error(`❌ fail id=${j.id}`, e as Error);
       }
     }
-    this.logger.log(`✅ sent ${unsent.length} journal(s)`);
+    this.logger.log(`✅ sent ${success} journal(s)`);
   }
 }

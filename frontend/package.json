@@ -8,19 +8,21 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@apollo/client": "^3.7.0",
-    "@chakra-ui/react": "^2.5.2",
-    "@emotion/react": "^11.10.6",
-    "@emotion/styled": "^11.10.6",
+    "@apollo/client": "^3.13.8",
+    "@chakra-ui/react": "^2.10.7",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
     "ethers": "^5.x",
     "file-saver": "^2.0.5",
-    "graphql": "^16.6.0",
+    "framer-motion": "^12.7.4",
+    "graphql": "^16.10.0",
     "next": "13.x",
     "react": "18.x",
     "react-dom": "18.x",
     "typescript": "^4.9.5"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^5.0.5",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^18.x",
     "@types/react": "^18.x",

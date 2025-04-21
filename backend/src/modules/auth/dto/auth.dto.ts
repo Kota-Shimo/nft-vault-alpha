@@ -1,23 +1,8 @@
-import { InputType, Field, ObjectType } from "@nestjs/graphql";
-import { User } from "../../user/dto/user.dto";
+import { Field, InputType } from '@nestjs/graphql';
 
 @InputType()
-export class WalletConnectInput {
-  @Field()
-  walletAddress!: string;
-
-  @Field()
-  signature!: string;
-
-  @Field()
-  chainType!: string;
-}
-
-@ObjectType()
-export class AuthPayload {
-  @Field()
-  token!: string;
-
-  @Field(() => User)
-  user!: User;
+export class ConnectWalletInput {
+  @Field() address!: string;    // 0x...
+  @Field() signature!: string;  // personal_sign 結果
+  @Field() chainType!: string;  // "EVM" | "APTOS" ...
 }

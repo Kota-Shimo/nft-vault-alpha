@@ -1,73 +1,110 @@
-/* frontend/pages/journal.tsx
-   ───────────────────────── */
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
-import { gql, useQuery } from '@apollo/client';
+/* -------------  frontend/pages/journal.tsx  ------------- */
 import {
+  Box,
+  Button,
   Table,
   Thead,
   Tbody,
   Tr,
   Th,
   Td,
-  Box,
   Spinner,
-  Text,
+  HStack,
   Badge,
+  useToast,
+  Center,
 } from '@chakra-ui/react';
+import { useQuery, useMutation, useLazyQuery } from '@apollo/client';
+import {
+  GET_JOURNAL,
+  GET_JOURNAL_CSV,
+  MUTATE_GENERATE,
+  MUTATE_FREEE,
+} from '../graphql/queries';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 
-/* ───────── GraphQL ───────── */
-const LIST = gql`
-  query ($tenantId: String!) {
-    journal(tenantId: $tenantId) {
-      id
-      accountDr
-      accountCr
-      amountJpy
-      freeeDealId        # ←★ 追加
+/* ───────── 認証ガード ───────── */
+const useAuthGuard = () => {
+  const router = useRouter();
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
+      router.replace('/login');
     }
-  }
-`;
+  }, [router]);
+};
 
 export default function JournalPage() {
-  const router = useRouter();
+  useAuthGuard();
+  const toast = useToast();
 
-  /* ① トークンガード ───────────────── */
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) router.replace('/login');
-  }, [router]);
-
-  /* ② データ取得 ───────────────────── */
-  const { data, loading, error } = useQuery(LIST, {
-    variables: { tenantId: 'default-tenant' },
-    fetchPolicy: 'cache-and-network',
+  /* ① 一覧取得 ─── もう variables は不要 */
+  const { data, loading, error, refetch } = useQuery(GET_JOURNAL, {
+    fetchPolicy: 'no-cache',
   });
 
-  if (loading) return <Spinner mx="auto" mt={10} />;
+  /* ② CSV 取得（遅延クエリ） */
+  const [fetchCsv]   = useLazyQuery(GET_JOURNAL_CSV, { fetchPolicy: 'network-only' });
 
-  if (error)
-    return (
-      <Text color="red.500" mt={10} textAlign="center">
-        {error.message}
-      </Text>
-    );
+  /* ③ ミューテーション */
+  const [generate]   = useMutation(MUTATE_GENERATE);
+  const [sendFreee]  = useMutation(MUTATE_FREEE);
 
-  /* ③ テーブル描画 ─────────────────── */
+  /* ───────── ハンドラ ───────── */
+  const handleGenerate = async () => {
+    await generate();
+    toast({ title: '仕訳を生成しました', status: 'success' });
+    refetch();
+  };
+
+  const handleSend = async () => {
+    await sendFreee();
+    toast({ title: 'freee へ送信しました', status: 'success' });
+    refetch();
+  };
+
+  const handleCsv = async () => {
+    const { data } = await fetchCsv();
+    const b64 = data?.journalCsv;
+    if (!b64) return;
+    const blob = new Blob([atob(b64)], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `journal.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /* ───────── UI ───────── */
+  if (loading) return <Center h="70vh"><Spinner /></Center>;
+
+  if (error)   return <Center h="70vh"><Box color="red.500">{error.message}</Box></Center>;
+
+  const journals = data?.journal ?? [];
+
   return (
-    <Box maxW="4xl" mx="auto" mt={6}>
-      <Table variant="simple">
+    <Box p={6}>
+      <HStack mb={4} spacing={4}>
+        <Button colorScheme="teal"   onClick={handleGenerate}>仕訳を生成</Button>
+        <Button colorScheme="orange" onClick={handleSend}>freee へ送信</Button>
+        <Button variant="outline"    onClick={handleCsv}>CSV DL</Button>
+      </HStack>
+
+      <Table variant="striped" size="sm">
         <Thead>
           <Tr>
+            <Th>ID</Th>
             <Th>借方</Th>
             <Th>貸方</Th>
             <Th isNumeric>金額 (¥)</Th>
-            <Th w="100px">Status</Th>
+            <Th>Status</Th>
           </Tr>
         </Thead>
         <Tbody>
-          {data?.journal.map((j: any) => (
+          {journals.map((j: any) => (
             <Tr key={j.id}>
+              <Td>{j.id}</Td>
               <Td>{j.accountDr}</Td>
               <Td>{j.accountCr}</Td>
               <Td isNumeric>{j.amountJpy.toLocaleString()}</Td>

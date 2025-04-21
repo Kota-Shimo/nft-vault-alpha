@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { FreeeService }   from './freee.service';
-import { JournalSyncJob } from '../journal/journal.sync';
+import { PrismaService } from '../prisma.service';
+import { FreeeService } from './freee.service';
+import { FreeeResolver } from './freee.resolver';
 
 @Module({
-  providers: [FreeeService, JournalSyncJob],
-  exports:   [FreeeService],       // 他モジュールでも使えるように export
+  providers: [PrismaService, FreeeService, FreeeResolver],
+  exports: [FreeeService],
 })
 export class FreeeModule {}

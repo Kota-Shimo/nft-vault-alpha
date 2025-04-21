@@ -12,23 +12,25 @@ import {
   AlertIcon,
 } from '@chakra-ui/react';
 
-/* ✅ email / password を２引数で渡す新しいミューテーション */
+/* ミューテーション: email と password を変数で渡す */
 const LOGIN = gql`
-  mutation Login($email: String!, $password: String!) {
+  mutation ($email: String!, $password: String!) {
     login(email: $email, password: $password)
   }
 `;
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
+  const [error, setError] = useState('');
 
+  /* 共有 ApolloClient（_app.tsx で Provider 済）を使用 */
   const [login, { loading }] = useMutation(LOGIN, {
     onCompleted: ({ login }) => {
-      localStorage.setItem('token', login);     // ← ここに JWT
-      router.push('/dashboard');                // 好きな遷移先に変更可
+      console.log('JWT', login);                    // ← デバッグ用
+      localStorage.setItem('token', login);        // ★ 必ず保存
+      router.push('/dashboard');                   // ⇒ 次ページでヘッダー付与
     },
     onError: () => setError('認証に失敗しました'),
   });
@@ -36,13 +38,13 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    login({ variables: { email, password } });  // ← 変数で渡す
+    login({ variables: { email, password } });
   };
 
   return (
-    <Box maxW="sm" mx="auto" mt={10} p={4} borderWidth="1px" borderRadius="md">
+    <Box maxW="sm" mx="auto" mt={10} p={4} borderWidth="1px" rounded="md">
       <form onSubmit={handleSubmit}>
-        <VStack spacing={3} align="stretch">
+        <VStack spacing={3}>
           <Input
             placeholder="Email"
             type="email"
@@ -57,12 +59,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <Button
-            type="submit"
-            isLoading={loading}
-            colorScheme="teal"
-            w="full"
-          >
+          <Button type="submit" colorScheme="teal" w="full" isLoading={loading}>
             ログイン
           </Button>
 
