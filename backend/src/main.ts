@@ -1,60 +1,85 @@
-/* -------------  backend/src/main.ts  ------------- */
+/* -------- backend/src/main.ts -------- */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
+import { ValidationPipe, Catch, HttpException } from '@nestjs/common';
+import { GqlArgumentsHost, GqlExceptionFilter } from '@nestjs/graphql';
 import * as bodyParser from 'body-parser';
+import * as jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 
+/* ─ JSON logger ─ */
+import { createLogger, transports, format } from 'winston';
+const logger = createLogger({
+  level: 'info',
+  transports: [new transports.Console({ format: format.json() })],
+});
+
+/* ─ GraphQL exception filter ─ */
+@Catch(HttpException)
+class GqlHttpExceptionFilter implements GqlExceptionFilter {
+  catch(exc: HttpException, host: Parameters<GqlExceptionFilter['catch']>[1]) {
+    const gqlHost = GqlArgumentsHost.create(host);
+    const info    = gqlHost.getInfo();
+    const req     = gqlHost.getContext().req as Request;
+    const user    = (req as any).user ?? {};
+
+    const res = exc.getResponse() as any;
+    res.field = info.fieldName;
+    res.uid   = user.sub ?? 'anon';
+
+    logger.warn({ msg: 'GQL_ERR', ...res });
+    return exc;
+  }
+}
+
 async function bootstrap() {
-  /* 🚩 デフォルト body‑parser を有効のまま生成 */
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule);   // Nest 標準ログのまま
 
-  /* 環境変数確認 (デバッグ用) */
-  console.log('EVM_RPC_URL =', process.env.EVM_RPC_URL ?? '<<undefined>>');
+  /* 環境変数デバッグ */
+  logger.info({ msg: 'ENV', EVM_RPC_URL: process.env.EVM_RPC_URL ?? '<undef>' });
 
-  /* ───── Stripe Webhook だけ raw Body ───── */
-  app.use(
-    '/stripe/webhook',
-    bodyParser.raw({ type: 'application/json' }),
-  );
-  /* ※ それ以外のルートは Nest が自動で JSON パースする */
+  /* Stripe raw body */
+  app.use('/stripe/webhook', bodyParser.raw({ type: 'application/json' }));
 
-  /* ───── JWT ミドルウェア ───── */
+  /* JWT → req.user */
   app.use((req: Request, _res: Response, next: NextFunction) => {
     const hdr = req.headers.authorization;
     if (hdr?.startsWith('Bearer ')) {
       try {
-        const payload = jwt.verify(
+        const payload: any = jwt.verify(
           hdr.slice(7),
           process.env.JWT_SECRET || 'dev-secret',
-        ) as any;
-        (req as any).user = { id: payload.sub ?? payload.id };
-      } catch {
-        /* invalid token → 匿名扱い */
+        );
+        (req as any).user = {
+          sub:      payload.sub ?? payload.id,
+          email:    payload.email,
+          tenantId: payload.tenantId ?? null,
+        };
+      } catch (e: any) {
+        logger.warn({ msg: 'JWT verify failed', err: e.message });
       }
     }
     next();
   });
 
-  /* ───── バリデーション ───── */
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.useGlobalFilters(new GqlHttpExceptionFilter());
 
-  /* ───── CORS ───── */
+  /* CORS */
   app.enableCors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // curl 等
+      if (!origin) return cb(null, true);
       if (origin.startsWith('http://localhost:3000')) return cb(null, true);
       if (origin.startsWith('http://localhost:4000')) return cb(null, true);
       if (/\.vercel\.app$/.test(origin)) return cb(null, true);
       return cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
   });
 
-  /* ───── 起動 ───── */
   const PORT = Number(process.env.PORT) || 4000;
   await app.listen(PORT);
-  console.log(`✅ Backend is running on http://localhost:${PORT}/graphql`);
+  logger.info({ msg: 'SERVER_START', url: `http://localhost:${PORT}/graphql` });
 }
 bootstrap();

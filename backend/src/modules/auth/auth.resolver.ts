@@ -1,9 +1,10 @@
 import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
-import { UseGuards, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, UseGuards } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { ConnectWalletInput } from './dto/connect-wallet.input';
 import { GqlJwtAuthGuard } from '../../guards/gql-auth.guard';
+import { Public } from '../../common/public.decorator';       // ★ 追加
 
 @Resolver()
 export class AuthResolver {
@@ -11,6 +12,7 @@ export class AuthResolver {
 
   /* ───── 新規登録 ───── */
   @Mutation(() => String)
+  @Public()                                                   // ★ Guard を完全スキップ
   async register(
     @Args('email') email: string,
     @Args('password') password: string,
@@ -21,6 +23,7 @@ export class AuthResolver {
 
   /* ───── ログイン ───── */
   @Mutation(() => String)
+  @Public()                                                   // ★ Guard を完全スキップ
   async login(
     @Args('email') email: string,
     @Args('password') password: string,
@@ -28,18 +31,17 @@ export class AuthResolver {
     const user = await this.authSvc.validateUser(email, password);
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    /* ★ tenantId を含めて JWT を発行 */
+    /* tenantId を含めて JWT を発行 */
     const token = await this.authSvc.login({
       id: user.id,
       email: user.email!,
       tenantId: user.tenantId ?? null,
     });
-
     return token.accessToken;
   }
 
   /* ───── ウォレット接続 ───── */
-  @UseGuards(GqlJwtAuthGuard)
+  @UseGuards(GqlJwtAuthGuard)                                 // 認証が必要
   @Mutation(() => Boolean)
   async connectWallet(
     @Args('input') input: ConnectWalletInput,

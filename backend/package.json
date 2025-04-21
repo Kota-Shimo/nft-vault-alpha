@@ -6,7 +6,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "prisma:deploy": "prisma migrate deploy --schema ./prisma/schema.prisma",
-    "build": "npm run prisma:deploy && nest build",
+    "build": "npm run prisma:deploy && npx nest build",
     "lint": "eslint . --ext .ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
@@ -47,10 +47,11 @@
     "pdfkit": "^0.17.0",
     "prisma": "^4.x",
     "reflect-metadata": "^0.1.13",
-    "stripe": "^18.0.0"
+    "stripe": "^18.0.0",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
-    "@nestjs/cli": "^9.x",
+    "@nestjs/cli": "^9.5.0",
     "@types/bcrypt": "^5.x",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^8.5.9",

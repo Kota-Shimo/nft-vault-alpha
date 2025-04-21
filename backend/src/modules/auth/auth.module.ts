@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthResolver } from './auth.resolver';
 import { LocalStrategy } from './local.strategy';
 import { JwtStrategy } from './jwt.strategy';
-import { GqlLocalAuthGuard, GqlJwtAuthGuard } from './gql-auth.guard';
+import { GqlLocalAuthGuard, GqlJwtAuthGuard } from '../../guards/gql-auth.guard';
 
 @Module({
   imports: [

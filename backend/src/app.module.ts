@@ -29,7 +29,7 @@ import { TxResolver }     from './tx/tx.resolver';
 import { JournalSyncJob } from './journal/journal.sync';
 
 /* Multi‑tenant Guard / Interceptor */
-import { TenantGuard }       from './guards/tenant.guard';
+import { TenantGuardV2 }       from './guards/tenant.guard';
 import { TenantInterceptor } from './interceptors/tenant.interceptor';
 
 @Module({
@@ -70,7 +70,7 @@ import { TenantInterceptor } from './interceptors/tenant.interceptor';
     JournalSyncJob,
 
     /* ★ ここで全ルートに適用 */
-    { provide: APP_GUARD,      useClass: TenantGuard },
+    //{ provide: APP_GUARD,      useClass: TenantGuardV2 },
     { provide: APP_INTERCEPTOR,useClass: TenantInterceptor },
   ],
 })
